@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Employee Management</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial; max-width: 960px; margin: 24px auto; padding: 0 12px; }
+    h1 { margin-bottom: 8px; }
+    form, .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; margin: 12px 0; }
+    label { display: block; margin: 8px 0 4px; }
+    input { width: 100%; padding: 8px; }
+    button { padding: 8px 12px; cursor: pointer; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    .row-actions button { margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Employee Management (Demo UI)</h1>
+
+  <div class="card">
+    <h3>Create Employee</h3>
+    <form id="createForm">
+      <label>Name</label>
+      <input name="name" required placeholder="e.g., Priya Sharma" />
+      <label>Email</label>
+      <input name="email" type="email" required placeholder="e.g., priya@company.com" />
+      <label>Position</label>
+      <input name="position" required placeholder="e.g., Software Engineer" />
+      <label>Department</label>
+      <input name="department" required placeholder="e.g., IT" />
+      <label>Salary</label>
+      <input name="salary" type="number" min="0" required placeholder="e.g., 750000" />
+      <label>Active?</label>
+      <input name="isActive" type="checkbox" checked />
+      <br/><br/>
+      <button type="submit">Create</button>
+    </form>
+    <p id="createMsg"></p>
+  </div>
+
+  <div class="card">
+    <h3>Filter / Search</h3>
+    <form id="filterForm">
+      <label>Search (q)</label>
+      <input name="q" placeholder="name/position/department" />
+      <label>Department</label>
+      <input name="department" placeholder="e.g., IT, HR" />
+      <label>Min Salary</label>
+      <input name="minSalary" type="number" min="0" />
+      <label>Max Salary</label>
+      <input name="maxSalary" type="number" min="0" />
+      <label>Active?</label>
+      <select name="isActive">
+        <option value="">Any</option>
+        <option value="true">Active</option>
+        <option value="false">Inactive</option>
+      </select>
+      <label>Sort (e.g., -salary or name)</label>
+      <input name="sort" placeholder="-createdAt" />
+      <label>Page</label>
+      <input name="page" type="number" min="1" value="1" />
+      <label>Limit</label>
+      <input name="limit" type="number" min="1" value="10" />
+      <br/><br/>
+      <button type="submit">Load Employees</button>
+    </form>
+  </div>
+
+  <div id="list"></div>
+
+  <script>
+    const api = (path, options) => fetch(path, { headers: { "Content-Type": "application/json" }, ...options });
+
+    const createForm = document.getElementById("createForm");
+    const createMsg = document.getElementById("createMsg");
+    const filterForm = document.getElementById("filterForm");
+    const listDiv = document.getElementById("list");
+
+    createForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const f = new FormData(createForm);
+      const body = {
+        name: f.get("name"),
+        email: f.get("email"),
+        position: f.get("position"),
+        department: f.get("department"),
+        salary: Number(f.get("salary")),
+        isActive: f.get("isActive") === "on"
+      };
+      const res = await api("/api/employees", { method: "POST", body: JSON.stringify(body) });
+      const data = await res.json();
+      createMsg.textContent = data.success ? "Created!" : (data.error || "Error");
+      if (data.success) {
+        createForm.reset();
+        loadList(); // refresh
+      }
+    });
+
+    filterForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      loadList();
+    });
+
+    async function loadList() {
+      const f = new FormData(filterForm);
+      const params = new URLSearchParams();
+      for (const [k, v] of f.entries()) if (v) params.append(k, v);
+      const url = "/api/employees?" + params.toString();
+
+      const res = await api(url);
+      const { success, data = [], total, page, limit, error } = await res.json();
+      if (!success) {
+        listDiv.textContent = error || "Error loading employees";
+        return;
+      }
+      const rows = data.map(e =>
+        `<tr>
+          <td>${e.name}</td>
+          <td>${e.email}</td>
+          <td>${e.position}</td>
+          <td>${e.department}</td>
+          <td>${e.salary}</td>
+          <td>${e.isActive ? "Yes" : "No"}</td>
+          <td class="row-actions">
+            <button onclick="toggleActive('${e._id}', ${!e.isActive})">${e.isActive ? "Deactivate" : "Activate"}</button>
+            <button onclick="removeEmp('${e._id}')">Delete</button>
+          </td>
+        </tr>`
+      ).join("");
+
+      listDiv.innerHTML = `
+        <div class="card">
+          <h3>Employees (Total: ${total}) — Page ${page} / ${Math.ceil(total/limit||1)}</h3>
+          <table>
+            <thead>
+              <tr><th>Name</th><th>Email</th><th>Position</th><th>Department</th><th>Salary</th><th>Active</th><th>Actions</th></tr>
+            </thead>
+            <tbody>${rows || "<tr><td colspan='7'>No data</td></tr>"}</tbody>
+          </table>
+        </div>`;
+    }
+
+    async function toggleActive(id, val) {
+      const res = await api("/api/employees/" + id, { method: "PATCH", body: JSON.stringify({ isActive: val }) });
+      const data = await res.json();
+      if (data.success) loadList();
+      else alert(data.error || "Error updating");
+    }
+
+    async function removeEmp(id) {
+      if (!confirm("Delete this employee?")) return;
+      const res = await api("/api/employees/" + id, { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) loadList();
+      else alert(data.error || "Error deleting");
+    }
+
+    loadList();
+  </script>
+</body>
+</html>
