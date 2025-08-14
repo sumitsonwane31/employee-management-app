@@ -26,7 +26,7 @@ app.use(express.static(path.join(__dirname, "public")));
 // Routes
 app.use("/api/employees", require("./routes/employeeRoutes"));
 
-// Health check
+
 app.get("/health", (_req, res) => {
   res.json({ ok: true, time: new Date().toISOString() });
 });
